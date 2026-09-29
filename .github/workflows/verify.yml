@@ -1,0 +1,25 @@
+name: 验证 Skill
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+      - name: 检查运行环境
+        run: python scripts/doctor.py
+      - name: 测试导入、报告与中文文档
+        run: python -m unittest discover -s tests -v

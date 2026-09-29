@@ -23,7 +23,7 @@ description: 在 macOS 或 Windows 上离线分析 AVTool 银狐采集 ZIP 或 i
 | macOS | `python3 scripts/doctor.py --input "/path/to/analysis.zip"` |
 | Windows PowerShell | `py -3 scripts\doctor.py --input "C:\Cases\analysis.zip"` |
 
-若 Windows 没有 `py`，可使用 `python` 或 Python 3.10+ 解释器的绝对路径。检查返回非零状态时先处理错误，不继续导入。检查结果中的 `python_executable` 是实际使用的解释器，后续命令沿用它。下载后安装、目录识别及故障排查见[安装与运行说明](references/setup.md)。
+若 `python3` 或 `py -3` 指向旧版 Python，应改用已安装的 Python 3.10+ 解释器；Windows 没有 `py` 时也可尝试 `python`。检查返回非零状态时先处理错误，不继续导入。检查结果中的 `python_executable` 是实际使用的解释器，后续命令沿用它。下载后安装、目录识别及故障排查见[安装与运行说明](references/setup.md)。
 
 ## 常用命令
 

@@ -11,7 +11,7 @@
 | macOS 终端 | `python3 scripts/doctor.py --input "/path/to/analysis.zip"` | `python3 scripts/evidence.py import "/path/to/analysis.zip"` |
 | Windows PowerShell | `py -3 scripts\doctor.py --input "C:\Cases\analysis.zip"` | `py -3 scripts\evidence.py import "C:\Cases\analysis.zip"` |
 
-需要 Python 3.10+。若 Windows 未安装 `py` 启动器，可改用 `python` 或已安装解释器的绝对路径。检查器输出实际解释器、版本、主机系统、SQLite 版本和错误列表；返回非零状态说明环境或输入未准备好，应先处理错误。它检查 SQLite JSON 函数和 ZIP 中是否恰有一个 `investigation.jsonl`，但不提取样本，也不分析证据。
+需要 Python 3.10+。macOS 的 `python3` 或 Windows 的 `py -3` 若指向更旧版本，应改用已安装 Python 3.10+ 的绝对路径；Windows 未安装 `py` 时也可尝试 `python`。检查器输出实际解释器、版本、主机系统、SQLite 版本和错误列表；返回非零状态说明环境或输入未准备好，应先处理错误。它检查 SQLite JSON 函数和 ZIP 中是否恰有一个 `investigation.jsonl`，但不提取样本，也不分析证据。
 
 导入后，后续命令均使用导入结果中的 `database_path`。运行 `report_bundle.py init --db "<database_path>"` 建立该包的中文 Markdown 报告，再按 `SKILL.md` 继续调查。同一目录中多个包的数据库不能交叉使用。默认数据库和报告写在输入文件旁；若该目录不可写，应选择可写案件目录，并分别指定 `--db` 与 `--output-dir`。
 
