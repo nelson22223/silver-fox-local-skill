@@ -29,7 +29,7 @@ py -3 scripts\doctor.py --input "C:\Cases\analysis.zip"
 - 原始 ZIP/JSONL 仍是证据源。数据库保留每行原始字节及未知字段，不能用报告替代原件。
 - 规则命中、单个进程名或公开 IOC 不自动证明银狐归因。结论应标明观察事实、推断与未验证环节。
 
-项目不提供 Python 解释器，也不保证所有 coding agent 都支持自动发现 `SKILL.md`。macOS 的解压运行与样例导入已验证；Windows 端到端分析仍需要在真实 Windows 主机上验证。原版 JSON 的七模块结构无法把所有原生工件作为主详情，相关发现应在 Markdown 中完整叙述。
+项目不提供 Python 解释器，也不保证所有 coding agent 都支持自动发现 `SKILL.md`。macOS 已用真实 AVTool 附件验证导入和报告校验；GitHub Actions 的 macOS/Windows runner 已用合成输入通过环境检查及测试。真实 AVTool 附件尚未在 Windows 上完成全流程复核。原版 JSON 的七模块结构无法把所有原生工件作为主详情，相关发现应在 Markdown 中完整叙述。
 
 ## 许可证
 

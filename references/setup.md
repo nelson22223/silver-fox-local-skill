@@ -15,4 +15,4 @@
 
 导入后，后续命令均使用导入结果中的 `database_path`。运行 `report_bundle.py init --db "<database_path>"` 建立该包的中文 Markdown 报告，再按 `SKILL.md` 继续调查。同一目录中多个包的数据库不能交叉使用。默认数据库和报告写在输入文件旁；若该目录不可写，应选择可写案件目录，并分别指定 `--db` 与 `--output-dir`。
 
-ZIP 提供 Skill 指令和脚本，不包含 Python 解释器。脚本没有第三方 Python 包或服务器依赖。环境检查通过只证明本机基础条件满足；Windows 完整分析流程仍需在真实 Windows 主机上跑通后才能声称经过端到端验证。
+ZIP 提供 Skill 指令和脚本，不包含 Python 解释器。脚本没有第三方 Python 包或服务器依赖。环境检查通过只证明本机基础条件满足。公开仓库在 macOS 和 Windows runner 上用合成采集包执行测试；真实 AVTool 附件尚未在 Windows 上完成全流程复核，不能把合成测试写成真实案件验证。
