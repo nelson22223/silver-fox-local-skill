@@ -1,0 +1,3 @@
+interface:
+  display_name: "银狐本地取证分析"
+  short_description: "离线分析 AVTool 采集包，输出中文 Markdown 和原版 JSON"

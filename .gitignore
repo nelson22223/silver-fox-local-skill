@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+.env.*
+*.sqlite
+*.sqlite-*
+*.db
+*.jsonl
+*.zip
+*.mem
+.silverfox-db/
+.silverfox-reports/
+report.md
+report.json
