@@ -8,7 +8,7 @@
 
 | 视图 | AVTool 事件来源 | 主要字段 |
 |---|---|---|
-| `browser_histories` | 存在时的 `browser_history` | `url`、`visit_time`、`browser` |
+| `browser_histories` | 存在时的 `browser_history` | `url`、`visit_time`、`browser`；优先读取 AVTool 的 `URL`、`Visit_Time`、`Web_Browser`，兼容小写别名 |
 | `browser_downloads` | `browser_downloads` | `url`、`source_url`、`path`、`state`、`download_time`、`file_size`、`file_exists` |
 | `last_activity_view_records` | `last_activity` | `action_time`、`description`、`filename`、`full_path`、`more_information`、`data_source` |
 | `persistence_items` | `persistence_item` | `location`、`entry`、`enabled`、`image_path`、`launch_string`、`sha1` |
@@ -42,4 +42,6 @@ SELECT id, json_extract(data_json, '$.executable_name') AS exe, json_extract(dat
 
 每类来源的 AVTool 原始字段均保留在 `data_json` 或 `record_json`。路径或时间关联通常只是调查线索，还需核对文件身份和事件先后。`network_connections.remote_address` 是原始端点文本，可能包含端口，不能一律当作纯 IP。`browser_downloads.file_size` 可能为空或 0，也不是哈希。本地包没有虚构的服务器 `task_id`；一个数据库对应一次导入。
 
-注意 `inventory.quality.browser_download_rows_missing_core_fields`。上游 CSV 破行时，AVTool 可能生成字段不完整的下载记录。这些行连同原始字节仍被保留；不能把空的状态或路径解释为下载完成，也不能悄悄从相邻记录补造字段。
+注意 `inventory.quality.browser_download_rows_missing_core_fields` 和 `browser_history_rows_missing_core_fields`：它们分别统计下载记录缺少 URL、路径或状态，以及历史记录缺少 URL、访问时间或浏览器的行数；`NULL`、空字符串和纯空白均计入。`view_fields_without_values` 列出有记录却整列均为 `NULL`、空字符串或纯空白的字段。先比较同一事件的 `data_json` 原始键，再判断是字段名变化、来源未采集，还是采集值本来为空；不能从空列推断行为未发生。上游 CSV 破行时，AVTool 可能生成字段不完整的下载记录。这些行连同原始字节仍被保留；不能把空的状态或路径解释为下载完成，也不能悄悄从相邻记录补造字段。
+
+**更新映射后，已有 SQLite 数据库内的视图不会自动更新。** 保留原库和原始采集包，用新版脚本将同一来源重新导入另一个新路径（`import "采集包路径" --db "新路径.sqlite"`）；核对两库的 `metadata.source_sha256`、`line_count` 与 `browser_histories` 数量，再使用新库继续报告。导入器不覆盖已有数据库，也不合并不同采集包。

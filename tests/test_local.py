@@ -90,6 +90,8 @@ class LocalEvidenceTest(unittest.TestCase):
         self.assertFalse((self.db.parent / "samples" / "payload.exe").exists())
         self.assertEqual(1, inventory(self.db)["native_artifact_types"]["software_install"])
         self.assertEqual(0, inventory(self.db)["quality"]["browser_download_rows_missing_core_fields"])
+        self.assertIn({"view": "virus_hits", "rows": 1, "fields": ["file_size"]},
+                      inventory(self.db)["quality"]["view_fields_without_values"])
 
     def test_preflight_checks_runtime_and_input_shape(self) -> None:
         valid = check_runtime(self.input)
@@ -141,6 +143,36 @@ class LocalEvidenceTest(unittest.TestCase):
         self.assertEqual(1, query(second_db, "SELECT COUNT(*) AS n FROM process_infos")["rows"][0]["n"])
         with self.assertRaises(FileExistsError):
             import_evidence(self.input)
+
+    def test_browser_history_avtool_fields_and_legacy_aliases(self) -> None:
+        source = self.db.parent / "history.jsonl"
+        rows = [
+            {"Web_Browser": "Chrome", "URL": "https://example.test/one",
+             "Title": "first", "Visit_Time": "2026-01-01 01:00:00", "Visit_Count": 2},
+            {"browser": "Firefox", "url": "https://example.test/two",
+             "title": "second", "visit_time": "2026-01-01 02:00:00", "visit_count": 3},
+            {"Web_Browser": "Chrome", "Visit_Time": "2026-01-01 03:00:00"},
+            {"Web_Browser": "Chrome", "URL": "  ",
+             "Visit_Time": "2026-01-01 04:00:00"},
+        ]
+        source.write_text("".join(json.dumps({
+            "ts": "2026-01-01", "event_type": "browser_history", "data": data,
+        }) + "\n" for data in rows), encoding="utf-8")
+        history_db = self.db.parent / "history.sqlite"
+        result = import_evidence(source, history_db)
+        mapped = query(history_db, "SELECT browser, url, title, visit_time, visit_count "
+                       "FROM browser_histories ORDER BY id")["rows"]
+        self.assertEqual({"browser": "Chrome", "url": "https://example.test/one",
+                          "title": "first", "visit_time": "2026-01-01 01:00:00",
+                          "visit_count": 2}, mapped[0])
+        self.assertEqual({"browser": "Firefox", "url": "https://example.test/two",
+                          "title": "second", "visit_time": "2026-01-01 02:00:00",
+                          "visit_count": 3}, mapped[1])
+        self.assertIsNone(mapped[2]["url"])
+        self.assertEqual(2, result["quality"]["browser_history_rows_missing_core_fields"])
+        self.assertNotIn("browser_histories", [item["view"] for item in
+                          result["quality"]["view_fields_without_values"]])
+        self.assertEqual(rows[0]["URL"], record(history_db, 1)["record"]["data"]["URL"])
 
     def test_report_checks_schema_and_real_reference(self) -> None:
         report = fixture_report()

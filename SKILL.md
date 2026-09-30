@@ -43,7 +43,7 @@ python3 scripts/report_bundle.py check --db "/path/from-import-output.sqlite" --
 
 ## 调查与交付
 
-1. 导入并查看 `inventory`，再读[本地数据映射](references/local-data.md)。导入失败时说明错误，不生成“已完成”结论。原始 JSON 字段及每行原始字节均保存在数据库中；依赖编码恢复或字段缺失的记录需要复核。
+1. 导入并查看 `inventory`，再读[本地数据映射](references/local-data.md)。重点检查 `quality.browser_history_rows_missing_core_fields`、`browser_download_rows_missing_core_fields` 和 `view_fields_without_values`；视图有记录但关键列全无有效值时，先核对 `data_json` 的原始键再分析。导入失败时说明错误，不生成“已完成”结论。原始 JSON 字段及每行原始字节均保存在数据库中；依赖编码恢复或字段缺失的记录需要复核。
 2. 尽早建立中文 Markdown 报告。每完成一轮有意义的证据审查，就更新当前判断、证据链、待核问题、覆盖范围及更新记录。按[中文报告写作指南](references/report-writing.md)保持人读友好；每次交接前用 `report_bundle.py check` 核对来源哈希和证据 ID。
 3. 覆盖所有实际存在的证据类型，包括 Prefetch、Amcache、USN、SRUM、计划任务和 DNS 缓存。先看数量与分布，再查相关原始行。单次查询最多返回 200 行，并以 `truncated` 标明截断；继续缩小条件或分页，不能把前 200 行当成全量。用于发现的查询应带 `id`。空视图或未采集来源只是覆盖缺口，不证明相关行为不存在。
 4. 使用精确路径或哈希、采集批次、进程身份和事件时间建立关联；PID 或文件名本身不足以确认同一对象。区分观察事实、推断、情报相似性和缺失环节。研判优先级与归因边界见[银狐研判原则](references/silverfox-analysis.md)。原私有项目的服务器 SQL 与任务流程不属于本地执行步骤；可迁移原则已整理在本 Skill 中。

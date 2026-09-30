@@ -37,15 +37,21 @@ def _json_path(field: str) -> str:
     return "json_extract(record_json, '$.data." + field + "')"
 
 
+def _json_path_any(*fields: str) -> str:
+    return "COALESCE(" + ", ".join(_json_path(field) for field in fields) + ")"
+
+
 def _view_columns(mapping: dict[str, str]) -> str:
     return ",\n       ".join(f"{expression} AS {name}" for name, expression in mapping.items())
 
 
 VIEW_DEFINITIONS: dict[str, tuple[str, dict[str, str]]] = {
     "browser_histories": ("event_type = 'browser_history'", {
-        "browser": _json_path("browser"), "url": _json_path("url"),
-        "title": _json_path("title"), "visit_time": _json_path("visit_time"),
-        "visit_count": _json_path("visit_count"),
+        "browser": _json_path_any("Web_Browser", "browser"),
+        "url": _json_path_any("URL", "url"),
+        "title": _json_path_any("Title", "title"),
+        "visit_time": _json_path_any("Visit_Time", "visit_time"),
+        "visit_count": _json_path_any("Visit_Count", "visit_count"),
     }),
     "browser_downloads": ("event_type = 'browser_downloads'", {
         "browser": _json_path("Web_Browser"), "url": _json_path("Download_URL_1"),
@@ -331,14 +337,41 @@ def inventory(db_path: Path) -> dict:
         )}
         incomplete_downloads = connection.execute(
             "SELECT COUNT(*) FROM browser_downloads "
-            "WHERE url IS NULL OR path IS NULL OR state IS NULL"
+            "WHERE NULLIF(TRIM(CAST(url AS TEXT)), '') IS NULL "
+            "OR NULLIF(TRIM(CAST(path AS TEXT)), '') IS NULL "
+            "OR NULLIF(TRIM(CAST(state AS TEXT)), '') IS NULL"
         ).fetchone()[0]
+        incomplete_histories = connection.execute(
+            "SELECT COUNT(*) FROM browser_histories "
+            "WHERE NULLIF(TRIM(CAST(url AS TEXT)), '') IS NULL "
+            "OR NULLIF(TRIM(CAST(visit_time AS TEXT)), '') IS NULL "
+            "OR NULLIF(TRIM(CAST(browser AS TEXT)), '') IS NULL"
+        ).fetchone()[0]
+        fields_without_values = []
+        for view_name, (_, mapping) in VIEW_DEFINITIONS.items():
+            row_count = connection.execute(f"SELECT COUNT(*) FROM {view_name}").fetchone()[0]
+            if not row_count:
+                continue
+            checks = ", ".join(
+                f"COUNT(NULLIF(TRIM(CAST({column} AS TEXT)), '')) AS {column}"
+                for column in mapping
+            )
+            coverage = connection.execute(f"SELECT {checks} FROM {view_name}").fetchone()
+            missing = [column for column in mapping if coverage[column] == 0]
+            if missing:
+                fields_without_values.append({
+                    "view": view_name, "rows": row_count, "fields": missing,
+                })
     metadata["archive_entries"] = json.loads(metadata["archive_entries"])
     return {
         "database_path": str(db_path.resolve()),
         "metadata": metadata, "event_types": types, "native_artifact_types": native,
         "decode_status": decoding,
-        "quality": {"browser_download_rows_missing_core_fields": incomplete_downloads},
+        "quality": {
+            "browser_download_rows_missing_core_fields": incomplete_downloads,
+            "browser_history_rows_missing_core_fields": incomplete_histories,
+            "view_fields_without_values": fields_without_values,
+        },
     }
 
 
