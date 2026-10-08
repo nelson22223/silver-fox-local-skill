@@ -14,7 +14,9 @@ from zipfile import ZipFile, BadZipFile
 REQUIRED_FILES = (
     "SKILL.md",
     "scripts/doctor.py",
+    "scripts/build_distribution.py",
     "scripts/evidence.py",
+    "scripts/feedback.py",
     "scripts/report_bundle.py",
     "scripts/validate_report.py",
     "references/local-data.md",

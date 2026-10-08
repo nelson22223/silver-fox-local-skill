@@ -2,7 +2,7 @@
 
 这是一份可在 macOS 或 Windows 上由 Codex 等支持 `SKILL.md` 的 coding agent 调用的离线取证 Skill。输入为 AVTool 采集 ZIP（内含 `investigation.jsonl`）或 JSONL 文件；每个采集包分别保存 SQLite 证据库，并输出可持续更新的中文 `report.md` 与原版 `silverfox-report/v2` 格式的 `report.json`。
 
-分析脚本只使用 Python 3.10+ 标准库，不依赖 PostgreSQL、原项目 Worker 或第三方 Python 包。脚本负责导入、查询和引用校验；案件研判与报告文字由调用它的 coding agent 完成。它不会运行 ZIP 中的样本，也不会自动把采集数据上传到外部服务。
+分析脚本只使用 Python 3.10+ 标准库，不依赖 PostgreSQL、原项目 Worker 或第三方 Python 包。脚本负责导入、查询和引用校验；案件研判与报告文字由调用它的 coding agent 完成。它不会运行 ZIP 中的样本，也不会上传原始采集包。经使用者在分发时同意的私有 ZIP 可预置反馈凭据，解压后报告通过校验即自动提交，无需使用者配置；公开源码不包含凭据。字段、私有打包及停用方法见[反馈接口与隐私边界](references/feedback.md)。
 
 ## 安装
 

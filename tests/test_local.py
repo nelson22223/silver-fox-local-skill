@@ -14,6 +14,12 @@ from zipfile import ZipFile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from evidence import import_evidence, inventory, query, record  # noqa: E402
 from doctor import check as check_runtime  # noqa: E402
+from build_distribution import build as build_distribution  # noqa: E402
+from feedback import (configure as configure_feedback, disable as disable_feedback,
+                      load_config as load_feedback_config, prepare as prepare_feedback,
+                      main as feedback_main, preview as preview_feedback, send as send_feedback,
+                      submit_if_enabled, read_token, PinnedHTTPSConnection,
+                      PinnedHTTPSHandler)  # noqa: E402
 from report_bundle import check as check_bundle, initialize as initialize_report  # noqa: E402
 from validate_report import validate_report  # noqa: E402
 
@@ -217,6 +223,207 @@ class LocalEvidenceTest(unittest.TestCase):
         json_path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "source SHA-256"):
             check_bundle(self.db, markdown, json_path)
+
+    def test_feedback_is_explicit_and_uses_validated_reports(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        report_dir = self.db.parent / "feedback-bundle"
+        markdown = initialize_report(self.db, report_dir)
+        report = fixture_report()
+        report["post_run_review"]["coverage"] = f"采集包 SHA-256 {self.result['metadata']['source_sha256']}"
+        json_path = report_dir / "report.json"
+        json_path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+        payload = prepare_feedback(self.db, markdown, json_path, customer="customer-a",
+                                   analyst_id="analyst-a")
+        self.assertEqual("test", payload["hostname"])
+        self.assertEqual("customer-a", payload["customer"])
+        self.assertEqual("analyst-a", payload["analyst_id"])
+        self.assertEqual(report, payload["report_json"])
+        self.assertIn("银狐本地取证报告", payload["report_markdown"])
+        self.assertNotIn("report_markdown", preview_feedback(payload))
+        self.assertTrue(preview_feedback(payload)["contains_full_reports"])
+
+        with self.assertRaisesRegex(ValueError, "HTTPS"):
+            send_feedback(payload, "http://feedback.example.test/reports", "token")
+        response = MagicMock()
+        response.status = 202
+        opener = MagicMock()
+        opener.open.return_value.__enter__.return_value = response
+        with patch("feedback.build_opener", return_value=opener):
+            self.assertEqual(202, send_feedback(payload, "https://feedback.example.test/reports", "token"))
+        request = opener.open.call_args.args[0]
+        self.assertEqual("Bearer token", request.get_header("Authorization"))
+        self.assertEqual("silverfox-feedback/v1", payload["schema_version"])
+        self.assertEqual("silver-fox-local", payload["skill"])
+        self.assertEqual("success", payload["status"])
+        self.assertEqual(payload["report_hash"], request.get_header("Idempotency-key"))
+        self.assertEqual(payload, json.loads(request.data))
+
+        report["post_run_review"]["coverage"] = "fixture without a source hash"
+        json_path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "source SHA-256"):
+            prepare_feedback(self.db, markdown, json_path)
+
+    def test_feedback_automatic_submission_requires_prior_consent_config(self) -> None:
+        from contextlib import redirect_stderr, redirect_stdout
+        import io
+        from unittest.mock import patch
+
+        report_dir = self.db.parent / "feedback-opt-in"
+        markdown = initialize_report(self.db, report_dir)
+        report = fixture_report()
+        report["post_run_review"]["coverage"] = f"采集包 SHA-256 {self.result['metadata']['source_sha256']}"
+        json_path = report_dir / "report.json"
+        json_path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+        config_path = self.db.parent / "settings" / "feedback.json"
+        command = ["feedback.py", "configure", "--config", str(config_path),
+                   "--endpoint", "https://feedback.example.test/reports"]
+        with patch.object(sys, "argv", command), redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
+            self.assertEqual(1, feedback_main())
+        self.assertFalse(config_path.exists())
+        with patch("feedback.BUNDLED_CONFIG", self.db.parent / "absent-deployment.json"), \
+                patch("feedback.send") as transmit:
+            result = submit_if_enabled(config_path, self.db, markdown, json_path)
+            self.assertFalse(result["submitted"])
+            transmit.assert_not_called()
+
+        with self.assertRaisesRegex(ValueError, "HTTPS"):
+            configure_feedback(config_path, "http://feedback.example.test/reports",
+                               "SILVERFOX_FEEDBACK_TOKEN")
+        self.assertFalse(config_path.exists())
+        configured = configure_feedback(config_path, "https://feedback.example.test/reports",
+                                        "SILVERFOX_FEEDBACK_TOKEN", "analyst-a")
+        self.assertTrue(configured["enabled"])
+        self.assertEqual("full_reports_with_hostname", load_feedback_config(config_path)["scope"])
+        with patch.dict("os.environ", {"SILVERFOX_FEEDBACK_TOKEN": "token"}):
+            with patch("feedback.send", return_value=202) as transmit:
+                result = submit_if_enabled(config_path, self.db, markdown, json_path)
+                self.assertTrue(result["submitted"])
+                self.assertEqual("analyst-a", transmit.call_args.args[0]["analyst_id"])
+                self.assertEqual("https://feedback.example.test/reports", transmit.call_args.args[1])
+                self.assertEqual("token", transmit.call_args.args[2])
+        disable_feedback(config_path)
+        with patch("feedback.send") as transmit:
+            result = submit_if_enabled(config_path, self.db, markdown, json_path)
+            self.assertFalse(result["submitted"])
+            transmit.assert_not_called()
+
+    def test_feedback_certificate_pin_checked_before_http_request(self) -> None:
+        import hashlib
+        import ssl
+        from unittest.mock import MagicMock, patch
+
+        certificate = b"test certificate fixture"
+        fingerprint = hashlib.sha256(certificate).hexdigest()
+        connection = PinnedHTTPSConnection("feedback.example.test", fingerprint)
+        connection.sock = MagicMock()
+        connection.sock.getpeercert.return_value = certificate
+        with patch("feedback.http.client.HTTPSConnection.connect"):
+            connection.connect()
+
+        wrong = PinnedHTTPSConnection("feedback.example.test", "0" * 64)
+        wrong.sock = MagicMock()
+        wrong.sock.getpeercert.return_value = certificate
+        with patch("feedback.http.client.HTTPSConnection.connect"), patch.object(wrong, "close") as close:
+            with self.assertRaisesRegex(ssl.SSLError, "fingerprint does not match"):
+                wrong.connect()
+            close.assert_called_once()
+
+        payload = {"report_hash": "a" * 64, "report_markdown": "fixture"}
+        response = MagicMock()
+        response.status = 202
+        opener = MagicMock()
+        opener.open.return_value.__enter__.return_value = response
+        with patch("feedback.build_opener", return_value=opener) as build:
+            self.assertEqual(202, send_feedback(payload, "https://feedback.example.test/feedback",
+                                                "token", fingerprint.upper()))
+        self.assertTrue(any(isinstance(item, PinnedHTTPSHandler) for item in build.call_args.args))
+        with self.assertRaisesRegex(ValueError, "64 hexadecimal digits"):
+            send_feedback(payload, "https://feedback.example.test/feedback", "token", "bad-pin")
+
+    def test_feedback_reads_private_token_file(self) -> None:
+        from unittest.mock import patch
+
+        token_file = self.db.parent / "feedback-token"
+        token_file.write_text("fixture-token\n", encoding="utf-8")
+        token_file.chmod(0o600)
+        self.assertEqual("fixture-token", read_token("UNSET_FEEDBACK_TOKEN", token_file))
+        config_path = self.db.parent / "feedback-file-config.json"
+        configure_feedback(config_path, "https://feedback.example.test/feedback",
+                           "UNSET_FEEDBACK_TOKEN", token_file=token_file)
+        self.assertEqual(str(token_file), load_feedback_config(config_path)["token_file"])
+        if sys.platform != "win32":
+            token_file.chmod(0o644)
+            with self.assertRaisesRegex(ValueError, "mode 600"):
+                read_token("UNSET_FEEDBACK_TOKEN", token_file)
+            token_file.chmod(0o600)
+        token_file.write_text("invalid token\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "malformed"):
+            read_token("UNSET_FEEDBACK_TOKEN", token_file)
+        token_file.write_text("fixture-token\n", encoding="utf-8")
+        with patch.dict("os.environ", {"UNSET_FEEDBACK_TOKEN": "other-token"}):
+            self.assertEqual("fixture-token", read_token("UNSET_FEEDBACK_TOKEN", token_file))
+
+    def test_feedback_bundled_distribution_uploads_without_user_configuration(self) -> None:
+        from unittest.mock import patch
+
+        report_dir = self.db.parent / "bundled-report"
+        markdown = initialize_report(self.db, report_dir)
+        report = fixture_report()
+        report["post_run_review"]["coverage"] = f"采集包 SHA-256 {self.result['metadata']['source_sha256']}"
+        json_path = report_dir / "report.json"
+        json_path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+        deployment = self.db.parent / "deployment"
+        deployment.mkdir()
+        bundled_config = deployment / "feedback.json"
+        bundled_config.write_text(json.dumps({
+            "version": 1, "scope": "full_reports_with_hostname", "enabled": True,
+            "consented_at": "2026-10-08T00:00:00+00:00",
+            "endpoint": "https://feedback.example.test/feedback",
+            "token_env": "SILVERFOX_FEEDBACK_TOKEN", "token_file": "token",
+            "analyst_id": None, "cert_sha256": "a" * 64,
+        }), encoding="utf-8")
+        token_file = deployment / "token"
+        token_file.write_text("fixture-token\n", encoding="utf-8")
+        token_file.chmod(0o644)
+        user_config = self.db.parent / "user-settings" / "feedback.json"
+        with patch("feedback.BUNDLED_CONFIG", bundled_config):
+            with patch("feedback.send", return_value=200) as send:
+                result = submit_if_enabled(user_config, self.db, markdown, json_path)
+            self.assertTrue(result["submitted"])
+            self.assertEqual("fixture-token", send.call_args.args[2])
+            self.assertEqual("a" * 64, send.call_args.args[3])
+            if sys.platform != "win32":
+                self.assertEqual(0o600, token_file.stat().st_mode & 0o777)
+            disable_feedback(user_config)
+            with patch("feedback.send") as send:
+                self.assertFalse(submit_if_enabled(user_config, self.db, markdown,
+                                                   json_path)["submitted"])
+                send.assert_not_called()
+
+    def test_private_distribution_contains_skill_and_bundled_feedback(self) -> None:
+        token_file = self.db.parent / "source-token"
+        token_file.write_text("fixture-token\n", encoding="utf-8")
+        token_file.chmod(0o600)
+        output = self.db.parent / "private-skill.zip"
+        with self.assertRaisesRegex(ValueError, "prior informed consent"):
+            build_distribution(output, token_file, "https://feedback.example.test/feedback",
+                               "a" * 64, consent_acknowledged=False)
+        result = build_distribution(output, token_file,
+                                    "https://feedback.example.test/feedback", "a" * 64,
+                                    consent_acknowledged=True)
+        self.assertTrue(result["contains_shared_token"])
+        if sys.platform != "win32":
+            self.assertEqual(0o600, output.stat().st_mode & 0o777)
+        with ZipFile(output) as archive:
+            self.assertIsNone(archive.testzip())
+            config = json.loads(archive.read("silver-fox-local/deployment/feedback.json"))
+            self.assertTrue(config["enabled"])
+            self.assertEqual("token", config["token_file"])
+            self.assertEqual(b"fixture-token\n",
+                             archive.read("silver-fox-local/deployment/token"))
+            self.assertIn("silver-fox-local/SKILL.md", archive.namelist())
+            self.assertIn("silver-fox-local/scripts/feedback.py", archive.namelist())
 
 
 if __name__ == "__main__":

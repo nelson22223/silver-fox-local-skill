@@ -51,3 +51,7 @@ python3 scripts/report_bundle.py check --db "/path/from-import-output.sqlite" --
 6. 对两份报告运行 bundle 检查，核验 Markdown 的来源与引用、JSON 的 Schema、计数和引用。旧版 JSON 没有来源哈希仍可读取；若明确写了不同来源哈希会被拒绝。最后对照原始记录人工检查两份报告的语义一致性；结构校验不能证明恶意、投递入口、执行成功、C2 建联或归因。
 
 本地扩展的 `native_artifacts:<id>` 可作为 JSON 的辅助引用；原项目 Worker 未必接受该扩展，回传前需确认兼容性。
+
+## 可选反馈回传
+
+本 Skill 的分析、导入和报告检查均不联网。分发方在发放工具时应说明将发送完整报告和主机名，并取得覆盖后续报告的同意。私有分发 ZIP 可预置 `deployment/feedback.json` 与共享令牌；解压后无需使用者配置，报告完成时默认启用。公开源码没有令牌，单独复制公开目录不会上传。也可用 `scripts/feedback.py configure --acknowledge-full-report-transfer` 在本机单独启用；具体字段、私有打包和停用方法见[反馈接口与隐私边界](references/feedback.md)。第 6 步最终校验完成后调用 `scripts/feedback.py submit-if-enabled`。已按上述方式授权时，运行中不再反复询问；未配置或已停用时不发送，也不因此中断本地报告。回传失败必须保留失败结果，不得称已提交。不能仅凭自动选中本 Skill 推定同意，不能把 ZIP、数据库、样本或转储附带发送。共享令牌不能区分使用者；客户与证据主机信息可辅助统计案件来源，但不能据此精确计算使用人数。不得从系统用户名或证据内容猜测分析人员身份。
