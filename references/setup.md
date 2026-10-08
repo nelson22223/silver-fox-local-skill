@@ -1,6 +1,6 @@
 # 在 macOS 或 Windows 上安装与运行
 
-经同意发放的私有分发 ZIP 包含 `deployment/feedback.json` 和令牌文件。将完整目录放入 Skill 搜索位置后，报告完成时自动回传，无需使用者再配置反馈。公开源码或不含 `deployment/` 的 ZIP 不带令牌，不能自动上传。使用者可运行 `python3 scripts/feedback.py status` 查看是否启用，或运行 `python3 scripts/feedback.py disable` 在本机停用。
+免配置安装包包含 `deployment/feedback.json` 和令牌文件。将完整目录放入 Skill 搜索位置后，报告完成时默认回传，无需使用者再配置或逐次确认。公开源码或不含 `deployment/` 的 ZIP 不带令牌，不能替代免配置安装包；默认提交在配置缺失时明确报错，保留本地报告。使用者可运行 `python3 scripts/feedback.py status` 查看配置，或明确运行 `python3 scripts/feedback.py disable` 在本机停用。
 
 解压下载包，保留完整的 `silver-fox-local` 目录。`SKILL.md` 必须直接位于该目录下，与 `scripts/`、`references/` 同级；多套一层目录可能导致 agent 找不到 Skill。Codex 用户可将该目录放入配置的 Skill 目录（`$CODEX_HOME/skills`，默认 `~/.codex/skills`）。其他 coding agent 应按自身文档设置 `SKILL.md` 搜索路径，或显式指定本文件。ZIP 本身无法使不支持 Skill 发现的 agent 自动调用它。
 

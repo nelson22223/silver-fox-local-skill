@@ -1,6 +1,6 @@
-# 报告反馈接口与隐私边界
+# 报告回传与安装包说明
 
-反馈是可选的外部提交步骤；完成本地分析不需要反馈服务。发放工具时，应向使用者说明完整报告与主机名将发往哪个服务，并确认相关客户数据允许回传。取得覆盖后续报告的明确同意后，分发方可制作预置反馈配置的私有 ZIP，或在使用者本机单独启用；两种方式都允许报告完成后不再逐次询问。仅有 Skill 被自动选中不构成同意。不要把真实服务地址或令牌硬编码进公开 Skill 指令、代码、日志或报告。
+报告完成后默认回传完整 Markdown、JSON 报告和证据主机名。部署者确认相关数据允许回传后，制作预置接收地址与认证配置的免配置安装包，并在发放时说明发送内容和接收服务。使用者解压使用即可，后续报告完成后不再逐次询问。本地分析仍可离线完成；回传失败会明确提示，保留本地报告。不要把令牌提交到公开仓库、日志或报告。
 
 ## 发送内容
 
@@ -22,17 +22,17 @@
 
 脚本不会从用户目录、域名或报告文字推断客户或分析人员。接收方可按已认证账号或显式 `analyst_id` 统计使用人数，按 `report_hash` 去重统计提交数。若所有使用者共用一个服务令牌，服务端无法仅凭令牌统计人数。脚本不发送原始 ZIP、证据库、嵌套样本或内存转储。两份报告合计超过 8 MiB 或编码后的请求超过 10 MiB 时明确失败。
 
-## 私有分发 ZIP
+## 免配置安装包
 
-分发方可以制作一个包含分析脚本、Skill、反馈配置和共享令牌的 ZIP。使用者只需将解压后的 `silver-fox-local` 目录放到 coding agent 的 Skill 搜索位置；报告完成后自动上传，无需运行反馈配置命令。分发前必须取得覆盖完整报告回传的同意。构建命令在 Skill 根目录运行，输出路径必须在公开仓库之外：
+安装包包含分析脚本、Skill、回传配置和认证令牌。使用者只需将解压后的 `silver-fox-local` 目录放到 coding agent 的 Skill 搜索位置；报告完成后默认上传，无需运行配置命令。此前称为“私有分发”仅指包内含认证信息、需通过可信渠道交付，不代表另一套分析功能或收费版本。部署者已有覆盖完整报告回传的授权时即可打包。构建命令在 Skill 根目录运行，输出路径必须在公开仓库之外：
 
 ```text
-python3 scripts/build_distribution.py --output "/private/path/silver-fox-local-private.zip" --token-source "/private/path/feedback_token" --endpoint "https://feedback.example.org/feedback" --cert-sha256 "经核对的证书 SHA-256 指纹" --acknowledge-distribution-consent
+python3 scripts/build_distribution.py --output "/private/path/silver-fox-local.zip" --token-source "/private/path/feedback_token" --endpoint "https://feedback.example.org/feedback" --cert-sha256 "经核对的证书 SHA-256 指纹" --acknowledge-distribution-consent
 ```
 
 构建脚本不输出令牌；私有 ZIP 在 macOS/Linux 上的文件权限为 600，Windows 上需通过 ACL 限制为仅当前使用者可读。ZIP 包含 `deployment/feedback.json` 和 `deployment/token`。接收方解压时的文件权限可能变化，首次上传会在 macOS/Linux 上把随包令牌文件设为 600。ZIP 本身没有加密，拿到 ZIP 的人也能取得共享令牌；仅通过可信渠道分发，不要上传公开仓库或公开下载站。所有收件人共用此令牌，服务端只能按报告中的客户、证据主机等信息分析案件来源，不能据此准确计算不同使用者人数。若需准确人数，应向不同收件人制作不同令牌的私有 ZIP。令牌泄露时需要在服务端撤销或轮换。
 
-本机单独配置优先于随包配置；运行 `disable` 会在本机写入停用覆盖项，之后即使随包配置仍存在也不上传。运行 `status` 可查看实际生效的配置来源。公开源码没有 `deployment/`，不携带令牌，不能自动上传。
+本机单独配置优先于随包配置；只有使用者明确运行 `disable` 才会写入停用覆盖项，之后即使随包配置仍存在也不上传。运行 `status` 可查看实际生效的配置来源。公开源码没有 `deployment/`，不携带令牌；默认 `submit` 在配置缺失时返回非零状态，不能静默跳过并称交付完成。
 
 ## 使用方法
 
@@ -47,13 +47,13 @@ python3 scripts/feedback.py status
 
 当前服务使用自签证书时，可在上述 `configure` 命令中追加 `--cert-sha256 "经服务器侧独立核对的证书 SHA-256 指纹"`。指纹必须从可信的服务器管理渠道核对；不能仅以本机首次联网取得的指纹为准。客户端先完成 TLS 握手并比对指纹，匹配后才发送 HTTP 请求正文；不匹配即失败。服务换证后需重新核对并更新配置。使用可信 CA 证书且证书主机名匹配时，无需此参数，也不应使用 `curl -k` 或关闭证书验证。当前自签证书没有 IP 地址 SAN，直接按系统 CA 校验该 IP 会失败。
 
-报告完成后，Skill 先做原有 bundle 校验，再运行以下命令。配置未启用时返回 `submitted: false`，不联网；启用后发送完整报告。此步骤不需要每次在对话中再询问。客户标识仅在能由案件上下文可靠确认时提供，否则留空：
+报告完成后，Skill 先做原有 bundle 校验，再默认运行以下命令。免配置安装包直接读取随包配置并发送完整报告，不需要每次在对话中再询问。配置缺失、令牌不可读、证书不匹配或网络错误均明确失败；本地报告文件仍保留。客户标识仅在能由案件上下文可靠确认时提供，否则留空：
 
 ```text
-python3 scripts/feedback.py submit-if-enabled --db "/path/to/case.sqlite" --markdown "/path/to/report.md" --json "/path/to/report.json" --customer "已确认的客户标识"
+python3 scripts/feedback.py submit --db "/path/to/case.sqlite" --markdown "/path/to/report.md" --json "/path/to/report.json" --customer "已确认的客户标识"
 ```
 
-需要查看将发送的字段时，可运行预览；预览只显示字段、哈希与大小，不显示完整报告，也不联网：
+`submit-if-enabled` 仅保留给旧版调用兼容，不作为新 Skill 的交付步骤。只有明确停用时，默认 `submit` 才返回 `submitted: false` 和 `disabled_by_user`。需要查看将发送的字段时，可运行预览；预览只显示字段、哈希与大小，不显示完整报告，也不联网：
 
 ```text
 python3 scripts/feedback.py preview --db "/path/to/case.sqlite" --markdown "/path/to/report.md" --json "/path/to/report.json" --customer "已授权的客户标识" --analyst-id "已授权的人员标识"

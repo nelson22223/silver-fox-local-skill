@@ -18,7 +18,7 @@ from build_distribution import build as build_distribution  # noqa: E402
 from feedback import (configure as configure_feedback, disable as disable_feedback,
                       load_config as load_feedback_config, prepare as prepare_feedback,
                       main as feedback_main, preview as preview_feedback, send as send_feedback,
-                      submit_if_enabled, read_token, PinnedHTTPSConnection,
+                      submit_if_enabled, submit_report, read_token, PinnedHTTPSConnection,
                       PinnedHTTPSHandler)  # noqa: E402
 from report_bundle import check as check_bundle, initialize as initialize_report  # noqa: E402
 from validate_report import validate_report  # noqa: E402
@@ -341,6 +341,27 @@ class LocalEvidenceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "64 hexadecimal digits"):
             send_feedback(payload, "https://feedback.example.test/feedback", "token", "bad-pin")
 
+    def test_default_submission_fails_when_configuration_is_missing(self) -> None:
+        from contextlib import redirect_stderr, redirect_stdout
+        import io
+        from unittest.mock import patch
+
+        config = self.db.parent / "absent-user-config.json"
+        markdown = self.db.parent / "report.md"
+        json_path = self.db.parent / "report.json"
+        markdown.write_text("保留本地报告", encoding="utf-8")
+        command = ["feedback.py", "submit", "--config", str(config),
+                   "--db", str(self.db), "--markdown", str(markdown),
+                   "--json", str(json_path)]
+        errors = io.StringIO()
+        with patch("feedback.BUNDLED_CONFIG", self.db.parent / "absent-bundle.json"), \
+                patch("feedback.send") as transmit, patch.object(sys, "argv", command), \
+                redirect_stderr(errors), redirect_stdout(io.StringIO()):
+            self.assertEqual(1, feedback_main())
+            transmit.assert_not_called()
+        self.assertIn("requires the deployed feedback configuration", errors.getvalue())
+        self.assertEqual("保留本地报告", markdown.read_text(encoding="utf-8"))
+
     def test_feedback_reads_private_token_file(self) -> None:
         from unittest.mock import patch
 
@@ -389,16 +410,24 @@ class LocalEvidenceTest(unittest.TestCase):
         user_config = self.db.parent / "user-settings" / "feedback.json"
         with patch("feedback.BUNDLED_CONFIG", bundled_config):
             with patch("feedback.send", return_value=200) as send:
-                result = submit_if_enabled(user_config, self.db, markdown, json_path)
+                result = submit_report(user_config, self.db, markdown, json_path)
             self.assertTrue(result["submitted"])
             self.assertEqual("fixture-token", send.call_args.args[2])
             self.assertEqual("a" * 64, send.call_args.args[3])
             if sys.platform != "win32":
                 self.assertEqual(0o600, token_file.stat().st_mode & 0o777)
+            original_markdown = markdown.read_bytes()
+            original_json = json_path.read_bytes()
+            with patch("feedback.send", side_effect=OSError("receiver unavailable")):
+                with self.assertRaisesRegex(OSError, "receiver unavailable"):
+                    submit_report(user_config, self.db, markdown, json_path)
+            self.assertEqual(original_markdown, markdown.read_bytes())
+            self.assertEqual(original_json, json_path.read_bytes())
             disable_feedback(user_config)
             with patch("feedback.send") as send:
-                self.assertFalse(submit_if_enabled(user_config, self.db, markdown,
-                                                   json_path)["submitted"])
+                result = submit_report(user_config, self.db, markdown, json_path)
+                self.assertFalse(result["submitted"])
+                self.assertEqual("disabled_by_user", result["reason"])
                 send.assert_not_called()
 
     def test_private_distribution_contains_skill_and_bundled_feedback(self) -> None:

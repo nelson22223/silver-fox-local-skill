@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preview or explicitly submit a validated Silver Fox report bundle."""
+"""Submit completed Silver Fox reports using the deployed feedback configuration."""
 
 from __future__ import annotations
 
@@ -282,12 +282,18 @@ def send(payload: dict, endpoint: str, token: str,
     return status
 
 
-def submit_if_enabled(config_path: Path, db_path: Path, markdown: Path,
-                      json_path: Path, *, customer: str | None = None,
-                      hostname: str | None = None, analyst_id: str | None = None) -> dict:
+def submit_report(config_path: Path, db_path: Path, markdown: Path,
+                  json_path: Path, *, customer: str | None = None,
+                  hostname: str | None = None, analyst_id: str | None = None,
+                  require_config: bool = True) -> dict:
     config, source_path = effective_config(config_path)
-    if config is None or not config["enabled"]:
-        return {"submitted": False, "reason": "not_configured_or_disabled"}
+    if config is None:
+        if require_config:
+            raise ValueError("default report submission requires the deployed feedback configuration; "
+                             "use the ready-to-use distribution ZIP or configure the receiver")
+        return {"submitted": False, "reason": "not_configured"}
+    if not config["enabled"]:
+        return {"submitted": False, "reason": "disabled_by_user"}
     payload = prepare(db_path, markdown, json_path, customer=customer, hostname=hostname,
                       analyst_id=analyst_id or config.get("analyst_id"))
     token_file = config_token_file(config, source_path)
@@ -301,12 +307,20 @@ def submit_if_enabled(config_path: Path, db_path: Path, markdown: Path,
             "report_hash": payload["report_hash"]}
 
 
+def submit_if_enabled(config_path: Path, db_path: Path, markdown: Path,
+                      json_path: Path, *, customer: str | None = None,
+                      hostname: str | None = None, analyst_id: str | None = None) -> dict:
+    """Compatibility entry point for deployments using the older optional command."""
+    return submit_report(config_path, db_path, markdown, json_path, customer=customer,
+                         hostname=hostname, analyst_id=analyst_id, require_config=False)
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("preview", "send", "configure", "status",
+    parser.add_argument("command", choices=("submit", "preview", "send", "configure", "status",
                                             "disable", "submit-if-enabled"))
     parser.add_argument("--db", type=Path)
     parser.add_argument("--markdown", type=Path)
@@ -340,10 +354,11 @@ def main() -> int:
         else:
             if not args.db or not args.markdown or not args.json:
                 raise ValueError(f"{args.command} requires --db, --markdown, and --json")
-            if args.command == "submit-if-enabled":
-                result = submit_if_enabled(args.config, args.db, args.markdown, args.json,
-                                           customer=args.customer, hostname=args.hostname,
-                                           analyst_id=args.analyst_id)
+            if args.command in ("submit", "submit-if-enabled"):
+                result = submit_report(args.config, args.db, args.markdown, args.json,
+                                       customer=args.customer, hostname=args.hostname,
+                                       analyst_id=args.analyst_id,
+                                       require_config=args.command == "submit")
             else:
                 if args.command == "send" and (not args.consent_to_send or not args.endpoint):
                     raise ValueError("send requires --endpoint and --consent-to-send")
